@@ -10,10 +10,12 @@ import (
 )
 
 // ErrorHandler is a function type that handles errors in Gin HTTP requests.
-// It receives an Error pointer containing error details and a Gin context pointer
+// It receives an error and a Gin context pointer
 // to manage the HTTP request/response lifecycle.
 type ErrorHandler func(error, *gin.Context)
 
+// ErrorNode 表示错误树中的一个节点，包含错误信息、错误处理器和子节点
+// ErrorNode represents a node in an error tree, containing error information, error handler, and child nodes
 type ErrorNode struct {
 	error    error
 	handler  ErrorHandler
@@ -63,11 +65,16 @@ func findExactNode(target error) *ErrorNode {
 	var dfs func(nodes []*ErrorNode) *ErrorNode
 	dfs = func(nodes []*ErrorNode) *ErrorNode {
 		for _, node := range nodes {
-			if errors.Is(node.error, target) && errors.Is(target, node.error) {
-				return node
-			}
-			if child := dfs(node.children); child != nil {
-				return child
+			if errors.Is(target, node.error) {
+				if errors.Is(node.error, target) {
+					return node
+				}
+				if child := dfs(node.children); child != nil {
+					return child
+				}
+				// if Is(target, node.error) is true, target mustbe
+				// node.error itself, or its sons
+				return nil
 			}
 		}
 		return nil
