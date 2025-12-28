@@ -14,11 +14,12 @@ import (
 // to manage the HTTP request/response lifecycle.
 type ErrorHandler func(error, *gin.Context)
 
-// ErrorNode 表示错误树中的一个节点，包含错误信息、错误处理器和子节点
-// ErrorNode represents a node in an error tree, containing error information, error handler, and child nodes
+// ErrorNode represents a node in an error tree,
+// containing error information, error handler, and child nodes
 type ErrorNode struct {
 	error    error
 	handler  ErrorHandler
+	parent   *ErrorNode
 	children []*ErrorNode
 }
 
@@ -29,15 +30,14 @@ func Register(handler ErrorHandler, errs ...error) error {
 		if newErr == nil {
 			return fmt.Errorf("cannot register nil error")
 		}
-		// if node already exists
-		if node := findExactNode(newErr); node != nil {
+		parent, itself := findPosition(newErr)
+		if itself != nil { // if node already exists
 			return fmt.Errorf("duplicate registration: %v", newErr)
-		}
-		// if node is a child of another node
-		if parent := findParentFor(newErr); parent != nil {
+		} else if parent != nil { // if node is a child of another node
 			parent.children = append(parent.children, &ErrorNode{
 				error:   newErr,
 				handler: handler,
+				parent:  parent,
 			})
 			continue
 		}
@@ -61,48 +61,28 @@ func Register(handler ErrorHandler, errs ...error) error {
 	return nil
 }
 
-func findExactNode(target error) *ErrorNode {
-	var dfs func(nodes []*ErrorNode) *ErrorNode
-	dfs = func(nodes []*ErrorNode) *ErrorNode {
+func findPosition(target error) (*ErrorNode, *ErrorNode) {
+	var dfs func(nodes []*ErrorNode) (*ErrorNode, *ErrorNode)
+	dfs = func(nodes []*ErrorNode) (*ErrorNode, *ErrorNode) {
 		for _, node := range nodes {
 			if errors.Is(target, node.error) {
 				if errors.Is(node.error, target) {
-					return node
+					return node.parent, node
 				}
-				if child := dfs(node.children); child != nil {
-					return child
+				if parent, child := dfs(node.children); child != nil {
+					return parent, child
+				} else if parent == nil {
+					// if errors.Is(target, node.error) is true, target mustbe
+					// node.error itself, or its sons
+					return node, nil
+				} else {
+					return parent, nil
 				}
-				// if Is(target, node.error) is true, target mustbe
-				// node.error itself, or its sons
-				return nil
 			}
 		}
-		return nil
+		return nil, nil
 	}
 	return dfs(errorTree)
-}
-
-func findParentFor(newErr error) *ErrorNode {
-	for _, root := range errorTree {
-		if parent := dfsFindParent(root, newErr); parent != nil {
-			return parent
-		}
-	}
-	return nil
-}
-
-func dfsFindParent(node *ErrorNode, newErr error) *ErrorNode {
-	if errors.Is(newErr, node.error) {
-		for _, child := range node.children {
-			if errors.Is(newErr, child.error) {
-				if deeper := dfsFindParent(child, newErr); deeper != nil {
-					return deeper
-				}
-			}
-		}
-		return node
-	}
-	return nil
 }
 
 func findChildrenFor(newErr error) []*ErrorNode {
