@@ -15,7 +15,7 @@ import (
 type ErrorHandler func(error, *gin.Context)
 
 // ErrorNode represents a node in an error tree,
-// containing error information, error handler, and child nodes
+// containing error information, error handler, and child nodes.
 type ErrorNode struct {
 	error    error
 	handler  ErrorHandler
@@ -25,7 +25,14 @@ type ErrorNode struct {
 
 var errorTree []*ErrorNode
 
+// Register associates error handlers with errors.
+//
+// NOTE: This function is NOT concurrent-safe and must be called
+// during application initialization only.
 func Register(handler ErrorHandler, errs ...error) error {
+	if handler == nil {
+		return fmt.Errorf("handler cannot be nil")
+	}
 	for _, newErr := range errs {
 		if newErr == nil {
 			return fmt.Errorf("cannot register nil error")
@@ -42,13 +49,13 @@ func Register(handler ErrorHandler, errs ...error) error {
 			continue
 		}
 		// if node is a father of another one
-		if children := findChildrenFor(newErr); len(children) > 0 {
+		if chidx, children := findChildren(newErr); len(children) > 0 {
 			newNode := &ErrorNode{
 				error:    newErr,
 				handler:  handler,
 				children: children,
 			}
-			removeNodesFromRoots(children)
+			removeRoots(chidx)
 			errorTree = append(errorTree, newNode)
 			continue
 		}
@@ -62,14 +69,14 @@ func Register(handler ErrorHandler, errs ...error) error {
 }
 
 func findPosition(target error) (*ErrorNode, *ErrorNode) {
-	var dfs func(nodes []*ErrorNode) (*ErrorNode, *ErrorNode)
-	dfs = func(nodes []*ErrorNode) (*ErrorNode, *ErrorNode) {
+	var trave func(nodes []*ErrorNode) (*ErrorNode, *ErrorNode)
+	trave = func(nodes []*ErrorNode) (*ErrorNode, *ErrorNode) {
 		for _, node := range nodes {
 			if errors.Is(target, node.error) {
 				if errors.Is(node.error, target) {
 					return node.parent, node
 				}
-				if parent, child := dfs(node.children); child != nil {
+				if parent, child := trave(node.children); child != nil {
 					return parent, child
 				} else if parent == nil {
 					// if errors.Is(target, node.error) is true, target mustbe
@@ -82,53 +89,41 @@ func findPosition(target error) (*ErrorNode, *ErrorNode) {
 		}
 		return nil, nil
 	}
-	return dfs(errorTree)
+	return trave(errorTree)
 }
 
-func findChildrenFor(newErr error) []*ErrorNode {
-	var children []*ErrorNode
-	for i := 0; i < len(errorTree); i++ {
+func findChildren(newErr error) (chidx []int, children []*ErrorNode) {
+	for i := len(errorTree) - 1; i >= 0; i-- {
 		root := errorTree[i]
 		if errors.Is(root.error, newErr) {
+			chidx = append(chidx, i)
 			children = append(children, root)
 		}
 	}
-
-	return children
+	return
 }
 
-func removeNodesFromRoots(nodes []*ErrorNode) {
-	for _, node := range nodes {
-		for i := 0; i < len(errorTree); i++ {
-			if errorTree[i] == node {
-				errorTree = append(errorTree[:i], errorTree[i+1:]...)
-				i--
-				break
-			}
-		}
+func removeRoots(nodes []int) {
+	for _, idx := range nodes {
+		errorTree = append(errorTree[:idx], errorTree[idx+1:]...)
 	}
 }
 
 func findHandler(err error) (ErrorHandler, bool) {
-	var queue []*ErrorNode
-	queue = append(queue, errorTree...)
-
-	var bestMatch *ErrorNode
-
-	for len(queue) > 0 {
-		node := queue[0]
-		queue = queue[1:]
-
-		if errors.Is(err, node.error) {
-			bestMatch = node
-			queue = append(queue, node.children...)
-		}
+	parent, itself := findPosition(err)
+	if itself != nil {
+		return itself.handler, true
+	} else if parent != nil {
+		return parent.handler, true
+	} else {
+		return nil, false
 	}
+}
 
-	if bestMatch != nil {
-		return bestMatch.handler, true
-	}
-	return nil, false
+var fallbackHandler ErrorHandler = func(err error, ctx *gin.Context) {
+	ctx.JSON(http.StatusInternalServerError, gin.H{
+		"error": "Unhandled error",
+	})
 }
 
 // ErrbinMiddleware return a gin.HandleFunc as a middleware
@@ -145,9 +140,12 @@ func ErrbinMiddleware() gin.HandlerFunc {
 		if handler, found := findHandler(err); found {
 			handler(err, c)
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Unhandled error",
-			})
+			fallbackHandler(err, c)
 		}
 	}
+}
+
+// Fallback allows to set a customize default/fallback ErrorHandler
+func Fallback(fn ErrorHandler) {
+	fallbackHandler = fn
 }
