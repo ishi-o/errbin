@@ -106,7 +106,7 @@ Errbin allows you to define handlers for specific error types and their subtypes
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE](/LICENSE)
 
 ## Acknowledgments
 

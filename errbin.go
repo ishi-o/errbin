@@ -4,6 +4,7 @@ package errbin
 import (
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 )
@@ -40,7 +41,11 @@ func ErrbinMiddleware() gin.HandlerFunc {
 		if !found {
 			h = fallbackHandler
 		}
-		globalMiddlewares(h)(err, c)
+		if globalMiddlewares == nil {
+			h(err, c)
+		} else {
+			globalMiddlewares(h)(err, c)
+		}
 	}
 }
 
@@ -90,7 +95,13 @@ func Use(handler ErrorHandler, errs ...error) error {
 // UseGlobal registers global middlewares, which will be executed
 // before the local middlewares and local handlers
 func UseGlobal(middlewares ...ErrorMiddleware) {
-	globalMiddlewares = MiddlewareChain(middlewares...)
+	if len(middlewares) > 0 {
+		if globalMiddlewares == nil {
+			globalMiddlewares = MiddlewareChain(middlewares...)
+		} else {
+			globalMiddlewares = MiddlewareChain(slices.Insert(middlewares, 0, globalMiddlewares)...)
+		}
+	}
 }
 
 // UseWithMiddleware is a shortcut for Use()
@@ -102,6 +113,9 @@ func UseWithMiddleware(middleware ErrorMiddleware, handler ErrorHandler, errs ..
 
 // MiddlewareChain wraps middlewares into a single ErrorMiddleware
 func MiddlewareChain(middlewares ...ErrorMiddleware) ErrorMiddleware {
+	if len(middlewares) == 0 {
+		return nil
+	}
 	return func(eh ErrorHandler) ErrorHandler {
 		for i := len(middlewares) - 1; i >= 0; i-- {
 			eh = middlewares[i](eh)
@@ -121,5 +135,8 @@ func Chain(handlers ...ErrorHandler) ErrorHandler {
 
 // Fallback allows to set a customize default/fallback ErrorHandler
 func Fallback(fn ErrorHandler) {
+	if fn == nil {
+		return
+	}
 	fallbackHandler = fn
 }

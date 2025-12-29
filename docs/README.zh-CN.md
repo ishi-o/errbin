@@ -2,7 +2,7 @@
 
 声明式 Gin 错误处理中间件，支持层次化错误匹配和中间件链。
 
-[English](docs/README.md) | 中文
+[English](/docs/README.md) | 中文
 
 ## 特性
 
@@ -106,7 +106,7 @@ Errbin 允许您以声明式的方式为特定错误类型及其子类型定义�
 
 ## 许可证
 
-MIT 许可证 - 详见 LICENSE 文件
+MIT 许可证 - 详见 [LICENSE](/LICENSE)
 
 ## 致谢
 

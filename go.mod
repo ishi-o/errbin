@@ -1,4 +1,4 @@
-module github.com/errbin
+module github.com/ishi-o/errbin
 
 go 1.25.4
 
