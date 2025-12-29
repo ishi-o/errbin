@@ -26,7 +26,9 @@ type ErrorNode struct {
 	Children []*ErrorNode
 }
 
-var errorTree []*ErrorNode
+var errorTree = make([]*ErrorNode, 0)
+
+var globalMiddlewares ErrorMiddleware
 
 var fallbackHandler ErrorHandler = func(err error, ctx *gin.Context) {
 	ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -77,6 +79,12 @@ func Use(handler ErrorHandler, errs ...error) error {
 	return nil
 }
 
+// UseGlobal registers global middlewares, which will be executed
+// before the local middlewares and local handlers
+func UseGlobal(middlewares ...ErrorMiddleware) {
+	globalMiddlewares = MiddlewareChain(middlewares...)
+}
+
 // UseWithMiddleware is a shortcut for Use()
 func UseWithMiddleware(middleware ErrorMiddleware, handler ErrorHandler, errs ...error) error {
 	return Use(func(err error, ctx *gin.Context) {
@@ -109,18 +117,17 @@ func Chain(handlers ...ErrorHandler) ErrorHandler {
 func ErrbinMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
-
 		if len(c.Errors) == 0 {
 			return
 		}
 
 		err := c.Errors.Last().Err
 
-		if handler, found := findHandler(err); found {
-			handler(err, c)
-		} else {
-			fallbackHandler(err, c)
+		h, found := findHandler(err)
+		if !found {
+			h = fallbackHandler
 		}
+		globalMiddlewares(h)(err, c)
 	}
 }
 
