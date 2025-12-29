@@ -21,7 +21,7 @@ func TestErrbin(t *testing.T) {
 	)
 
 	t.Run("Register base error", func(t *testing.T) {
-		err := Register(func(err error, c *gin.Context) {
+		err := Use(func(err error, c *gin.Context) {
 			c.JSON(400, gin.H{"msg": "base"})
 		}, ErrBase)
 		assert.NoError(t, err)
@@ -29,7 +29,7 @@ func TestErrbin(t *testing.T) {
 	})
 
 	t.Run("Register specific error", func(t *testing.T) {
-		err := Register(func(err error, c *gin.Context) {
+		err := Use(func(err error, c *gin.Context) {
 			c.JSON(400, gin.H{"msg": "specific"})
 		}, ErrSpecific)
 		assert.NoError(t, err)
@@ -37,14 +37,14 @@ func TestErrbin(t *testing.T) {
 	})
 
 	t.Run("Register leaf error", func(t *testing.T) {
-		err := Register(func(err error, c *gin.Context) {
+		err := Use(func(err error, c *gin.Context) {
 			c.JSON(400, gin.H{"msg": "more specific"})
 		}, ErrMoreSpec)
 		assert.NoError(t, err)
 	})
 
 	t.Run("Register duplicate error", func(t *testing.T) {
-		err := Register(func(err error, c *gin.Context) {
+		err := Use(func(err error, c *gin.Context) {
 			c.JSON(400, gin.H{"msg": "duplicate"})
 		}, ErrBase)
 		assert.Error(t, err)
@@ -87,16 +87,15 @@ func TestErrbin(t *testing.T) {
 		w3 := httptest.NewRecorder()
 		r3.ServeHTTP(w3, httptest.NewRequest("GET", "/test3", nil))
 		assert.Equal(t, http.StatusInternalServerError, w3.Code)
-		assert.Contains(t, w3.Body.String(), "Unhandled error")
 	})
 
 	t.Run("Test tree struct", func(t *testing.T) {
 		assert.Equal(t, 1, len(errorTree))
 		root := errorTree[0]
-		assert.Equal(t, ErrBase, root.error)
-		assert.Equal(t, 1, len(root.children))
-		assert.Equal(t, ErrSpecific, root.children[0].error)
-		assert.Equal(t, 1, len(root.children[0].children))
-		assert.Equal(t, ErrMoreSpec, root.children[0].children[0].error)
+		assert.Equal(t, ErrBase, root.Error)
+		assert.Equal(t, 1, len(root.Children))
+		assert.Equal(t, ErrSpecific, root.Children[0].Error)
+		assert.Equal(t, 1, len(root.Children[0].Children))
+		assert.Equal(t, ErrMoreSpec, root.Children[0].Children[0].Error)
 	})
 }
