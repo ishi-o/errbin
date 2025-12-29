@@ -14,6 +14,9 @@ import (
 // to manage the HTTP request/response lifecycle.
 type ErrorHandler func(error, *gin.Context)
 
+// ErrorMiddleware is a function type that execute between the last/next ErrorHandler.
+type ErrorMiddleware func(ErrorHandler) ErrorHandler
+
 // ErrorNode represents a node in an error tree,
 // containing error information, error handler, and child nodes.
 type ErrorNode struct {
@@ -72,6 +75,32 @@ func Use(handler ErrorHandler, errs ...error) error {
 		})
 	}
 	return nil
+}
+
+// UseWithMiddleware is a shortcut for Use()
+func UseWithMiddleware(middleware ErrorMiddleware, handler ErrorHandler, errs ...error) error {
+	return Use(func(err error, ctx *gin.Context) {
+		middleware(handler)(err, ctx)
+	}, errs...)
+}
+
+// MiddlewareChain wraps middlewares into a single ErrorMiddleware
+func MiddlewareChain(middlewares ...ErrorMiddleware) ErrorMiddleware {
+	return func(eh ErrorHandler) ErrorHandler {
+		for i := len(middlewares) - 1; i >= 0; i-- {
+			eh = middlewares[i](eh)
+		}
+		return eh
+	}
+}
+
+// Chain wraps handlers into a single ErrorHandler
+func Chain(handlers ...ErrorHandler) ErrorHandler {
+	return func(err error, ctx *gin.Context) {
+		for _, handler := range handlers {
+			handler(err, ctx)
+		}
+	}
 }
 
 // ErrbinMiddleware return a gin.HandleFunc as a middleware
